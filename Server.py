@@ -4,18 +4,11 @@ from ServerWorker import ServerWorker
 
 
 class Server:
-    """
-    RTSP Server - Lắng nghe và chấp nhận kết nối từ client
-    """
-    
     def main(self):
-        """
-        Hàm chính để khởi động server
-        """
         try:
-            server_port = int(sys.argv[1])
+            server_port = int(sys.argv[1]) #lấy tham số đầu tiên từ command line 
         except:
-            print("[Usage: Server.py Server_port]\n")
+            print("[Usage: Server.py Server_port]\n") #in ra thông báo nếu thiếu tham số
             return
         
         # Tạo socket TCP để lắng nghe kết nối RTSP
@@ -26,7 +19,6 @@ class Server:
         print(f"RTSP Server started on port {server_port}")
         print("Waiting for client connections...\n")
         
-        # Vòng lặp vô hạn chấp nhận kết nối
         while True:
             print("Listening for client...")
             

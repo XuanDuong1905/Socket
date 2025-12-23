@@ -1,18 +1,5 @@
 class VideoStream:
-    """
-    Lớp đọc file video MJPEG và trả về từng frame
-    """
-    
     def __init__(self, filename):
-        """
-        Khởi tạo video stream
-        
-        Args:
-            filename: Đường dẫn đến file video
-            
-        Raises:
-            IOError: Nếu không mở được file
-        """
         self.filename = filename
         try:
             self.file = open(filename, 'rb')
@@ -22,20 +9,13 @@ class VideoStream:
         self.frame_number = 0
     
     def nextFrame(self):
-        """
-        Đọc frame tiếp theo từ file
-        
-        Returns:
-            bytes: Dữ liệu JPEG của frame, hoặc None nếu hết file
-        """
         start_position = self.file.tell()
         data = self.file.read(5)  # Đọc 5 bytes đầu (độ dài frame)
         
         if not data:
-            return None  # Hết file
+            return None 
         
         try:
-            # MJPEG format: độ dài frame dưới dạng text ASCII ở đầu
             frame_length = int(data)
             frame_data = self.file.read(frame_length)
             self.frame_number += 1
@@ -67,10 +47,4 @@ class VideoStream:
             return None
     
     def frameNbr(self):
-        """
-        Lấy số thứ tự frame hiện tại
-        
-        Returns:
-            int: Số frame đã đọc
-        """
         return self.frame_number

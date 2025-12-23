@@ -27,31 +27,20 @@ class ServerWorker:
     state = INIT
     
     # Các mã phản hồi RTSP
-    OK_200 = 0
-    FILE_NOT_FOUND_404 = 1
-    CONNECTION_ERROR_500 = 2
+    OK_200 = 0 #nhận được request thành công
+    FILE_NOT_FOUND_404 = 1 #file không tìm thấy
+    CONNECTION_ERROR_500 = 2 #lỗi kết nối
     
     def __init__(self, client_info):
-        """
-        Khởi tạo worker cho một client
-        
-        Args:
-            client_info: Dictionary chứa thông tin client
-        """
         self.client_info = client_info
         self.client_info['sequence_number'] = 0
     
     def run(self):
-        """
-        Khởi động thread xử lý request từ client
-        """
+        #tạo một threads để nhận và xử lý request từ client song song với thread chính đảm bảo phục vụ được nhiều client cùng lúc
         threading.Thread(target=self.receive_rtsp_request).start()
     
     def receive_rtsp_request(self):
-        """
-        Thread nhận và xử lý RTSP request từ client
-        """
-        connection = self.client_info['rtsp_socket'][0]
+        connection = self.client_info['rtsp_socket'][0] #lấy ra client socket
         
         while True:
             try:
@@ -86,17 +75,17 @@ class ServerWorker:
     
     def process_rtsp_request(self, data):
         """
-        Xử lý RTSP request theo loại
-        
-        Args:
-            data: Dữ liệu RTSP request dạng text
+        Example:
+        SETUP movie.Mjpeg RTSP/1.0
+        CSeq: 1
+        Transport: RTP/UDP; client_port=5004
         """
         request_lines = data.split('\n')
         request_line = request_lines[0].split(' ')
         
-        request_type = request_line[0]
-        filename = request_line[1]
-        sequence_line = request_lines[1].split(' ')
+        request_type = request_line[0] #có thể là setup, play, pause, teardown
+        filename = request_line[1] #tên file video
+        sequence_line = request_lines[1].split(' ') #lấy ra sequence number
         
         # Xử lý SETUP
         if request_type == self.SETUP:
@@ -170,9 +159,6 @@ class ServerWorker:
             return
     
     def send_rtp(self):
-        """
-        Thread gửi dữ liệu RTP đến client
-        """
         max_payload_size = 1400  # Kích thước payload tối đa
         
         while True:
@@ -197,24 +183,21 @@ class ServerWorker:
                     current_index = 0
                     packet_count = 0
                     
-                    # Phân mảnh frame lớn thành nhiều gói RTP
                     while current_index < data_length:
                         if self.client_info['event'].isSet():
                             break
                         
-                        # Cắt chunk dữ liệu
+                        #Fragment cho Advanced
                         chunk = frame_data[current_index:current_index + max_payload_size]
                         current_index += max_payload_size
                         
-                        # Xác định marker bit
                         if current_index >= data_length:
-                            marker = 1  # Gói cuối cùng
+                            marker = 1  
                         else:
-                            marker = 0  # Chưa phải gói cuối
+                            marker = 0  
                         
                         self.client_info['sequence_number'] += 1
                         
-                        # Tạo gói RTP
                         packet = self.make_rtp_packet(
                             chunk, 
                             self.client_info['sequence_number'],
@@ -230,7 +213,6 @@ class ServerWorker:
                                 )
                                 
                                 packet_count += 1
-                                # Sleep nhẹ để tránh làm ngập buffer
                                 if packet_count % 20 == 0:
                                     time.sleep(0.002)
                                     
@@ -245,18 +227,6 @@ class ServerWorker:
                     traceback.print_exc(file=sys.stdout)
     
     def make_rtp_packet(self, payload, sequence_number, marker, frame_number):
-        """
-        Tạo gói RTP
-        
-        Args:
-            payload: Dữ liệu cần gửi
-            sequence_number: Số thứ tự gói
-            marker: Bit đánh dấu gói cuối frame
-            frame_number: Số thứ tự frame
-            
-        Returns:
-            bytes: Gói RTP hoàn chỉnh
-        """
         version = 2
         padding = 0
         extension = 0
@@ -264,19 +234,16 @@ class ServerWorker:
         payload_type = 26  # MJPEG
         ssrc = 0
         
-        # Tính timestamp
         clock_rate = 90000  # Tần số đồng hồ chuẩn cho video
         frames_per_second = 30
         timestamp_step = clock_rate // frames_per_second
         
-        # Khởi tạo base timestamp nếu chưa có
         if not hasattr(self, "_timestamp_base"):
-            self._timestamp_base = randint(0, 0xFFFFFFFF)
+            self._timestamp_base = randint(0, 0xFFFFFFFF) #giá trị lớn nhất của 32 bit
         
         timestamp = (self._timestamp_base + 
-                    frame_number * timestamp_step) & 0xFFFFFFFF
+                    frame_number * timestamp_step) & 0xFFFFFFFF #mod về đúng 32 bit chuẩn quy tắc
         
-        # Tạo và encode packet
         packet = RtpPacket()
         packet.encode(
             version,
@@ -294,16 +261,10 @@ class ServerWorker:
         return packet.getPacket()
     
     def reply_rtsp(self, response_code, sequence_number):
-        """
-        Gửi phản hồi RTSP cho client
-        
-        Args:
-            response_code: Mã phản hồi (OK_200, FILE_NOT_FOUND_404, ...)
-            sequence_number: Số thứ tự của request
-        """
         try:
             connection = self.client_info['rtsp_socket'][0]
             
+            #output ra màn hình máy server
             if response_code == self.OK_200:
                 print("200 OK")
                 reply = (f'RTSP/1.0 200 OK\n'
