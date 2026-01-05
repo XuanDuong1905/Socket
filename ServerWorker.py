@@ -44,20 +44,20 @@ class ServerWorker:
         
         while True:
             try:
-                data = connection.recv(256)
+                data = connection.recv(256) #đủ cho SETUP, PLAY, TEARDOWN, PAUSE
                 
                 if data:
                     print("Data received:\n" + data.decode("utf-8"))
                     self.process_rtsp_request(data.decode("utf-8"))
                 else:
-                    print("Client closed connection")
+                    print("Client closed connection") #không có dữ liệu ->client đã đóng socket
                     break
                     
             except ConnectionResetError:
-                print("Client reset connection")
+                print("Client reset connection") #Client tắt đột ngột
                 break
             except BrokenPipeError:
-                print("Broken pipe")
+                print("Broken pipe") #gửi khi socket đóng
                 break
             except OSError as e:
                 # Kiểm tra lỗi socket cụ thể trên Windows
@@ -134,6 +134,7 @@ class ServerWorker:
                 self.reply_rtsp(self.OK_200, sequence_line[1])
         
         # Xử lý TEARDOWN
+        # đóng hết toàn bộ luồng
         elif request_type == self.TEARDOWN:
             print("Processing TEARDOWN\n")
             
@@ -188,11 +189,11 @@ class ServerWorker:
                             break
                         
                         #Fragment cho Advanced
-                        chunk = frame_data[current_index:current_index + max_payload_size]
+                        chunk = frame_data[current_index:current_index + max_payload_size] #chia nhổ frame
                         current_index += max_payload_size
                         
                         if current_index >= data_length:
-                            marker = 1  
+                            marker = 1  #là frame cuối cùng 
                         else:
                             marker = 0  
                         
@@ -263,8 +264,7 @@ class ServerWorker:
     def reply_rtsp(self, response_code, sequence_number):
         try:
             connection = self.client_info['rtsp_socket'][0]
-            
-            #output ra màn hình máy server
+       
             if response_code == self.OK_200:
                 print("200 OK")
                 reply = (f'RTSP/1.0 200 OK\n'

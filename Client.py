@@ -78,6 +78,7 @@ class Client:
         self.frame_data = b''
         self.is_corrupted = False
     
+    #Vòng lặp GUI
     def start_gui_loop(self):
         if hasattr(self, 'pending_pil_image') and self.pending_pil_image:
             try:
@@ -87,6 +88,7 @@ class Client:
                 self.pending_pil_image = None
             except:
                 pass
+        #Sau mỗi 20ms lại chạy
         self.master.after(20, self.start_gui_loop)
     
     def create_widgets(self):
@@ -97,6 +99,7 @@ class Client:
         # Label hiển thị thời gian
         self.time_label = Label(self.master, text="00:00", font=("Helvetica", 12))
         self.time_label.grid(row=1, column=0, columnspan=4, pady=2)
+        # Tọa độ grid: hàng 0, cột 0, chiếm dụng 4 cột, chừa 2 pixel trên dưới.
         
         # Nút SETUP
         self.setup_button = Button(self.master, width=20, padx=3, pady=3)
@@ -178,14 +181,15 @@ class Client:
         jitter_buffer = {}
         max_buffer_size = 50
         
-        while not self.play_event.is_set():
+        while not self.play_event.is_set(): #kiểm tra tình trạng phát video
             if self.play_event.is_set():
                 break
             try:
-                data = self.rtp_socket.recv(40960)
+                data = self.rtp_socket.recv(40960) #nhận 40KB vừa đủ cho một gói RTP
                 if data:
                     self.total_bytes_received += len(data)
                     
+                    #Decode gói RTP
                     packet = RtpPacket()
                     packet.decode(data)
                     
@@ -193,7 +197,7 @@ class Client:
                     
                     # Chọn packet đầu tiên làm mốc xử lý
                     if self.is_first_packet:
-                        self.expected_sequence_number = sequence_number
+                        self.expected_sequence_number = sequence_number #đưa ra seg num mong đợi
                         self.is_first_packet = False
                     
                     jitter_buffer[sequence_number] = packet
@@ -209,9 +213,11 @@ class Client:
                             if self.expected_sequence_number > 65535:
                                 self.expected_sequence_number = 0 #16 bit
                         
+                        #trường hợp không có gói mong đợi trong buffer và đầy buffer
                         elif len(jitter_buffer) > max_buffer_size:
                             #không như mong đợi
                             keys = sorted(jitter_buffer.keys())
+                            #bỏ qua gói mong đợi và chọn gói có segnum nhỏ nhất tỏng buffer
                             next_sequence = keys[0]
                             
                             #tính toán frame bị mất
@@ -267,28 +273,30 @@ class Client:
     
     def monitor_buffering(self):
         #Chuẩn bị sau khi bấm nút setup
-        if self.is_first_play:
+        if self.is_first_play: #lần setup đầu tiên
             buffer_current_size = self.frame_buffer.qsize()
             
+            #chưa đủ buffer chưa cho phép play
             if buffer_current_size < self.buffer_size:
                 self.label.configure(text="Preparing for loading video...")
                 self.master.after(100, self.monitor_buffering)
             else:
+                #khi đủ buffer thì cho phép bấm play
                 self.send_rtsp_request(self.PAUSE)
                 self.label.configure(text="Ready")
                 self.play_button["state"] = "normal"
                 self.is_first_play = False
     
     def display_loop(self):
-        frames_per_second = 30
-        frame_interval = 1.0 / frames_per_second
-        startup_buffer = 1
+        frames_per_second = 30 #fps
+        frame_interval = 1.0 / frames_per_second #khoảng cách giữa 2 frame
+        startup_buffer = 1 #số lượng frame tối thiểu
         
         start_time = time.time()
-        while not self.play_event.is_set():
+        while not self.play_event.is_set(): #lặp đến khi dừng phát
             if self.frame_buffer.qsize() >= startup_buffer:
-                break
-            if time.time() - start_time > 10.0: #timeout
+                break #đủ frame bắt đầu chạy
+            if time.time() - start_time > 10.0: #khi quá 10s mà chưa nhận được frame nào
                 break
             time.sleep(0.005) #tránh CPU overloading
         
@@ -348,18 +356,23 @@ class Client:
         except Exception as e:
             print(f"Error processing frame: {e}")
     
+    #Tạo kết nối TCP từ RSTP client tới RTP sever
     def connect_to_server(self):
         self.rtsp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #Mở socket dùng IPv4, socket kiểu TCP.
         try:
             self.rtsp_socket.connect((self.server_address, self.server_port))
-        except:
-            tk_message_box.showwarning('Connection Failed', 
-                                      f'Connection to \'{self.server_address}\' failed.')
+        except socket.error as e:
+            #Thông báo mọi lỗi khi không kết nối được với sever
+            tk_message_box.showwarning('Connection Failed',
+                                    f'Connection to {self.server_address} failed:\n{e}')
     
+    #Gửi yêu cầu RTSP đảm bảo đúng luồng hoạt động
     def send_rtsp_request(self, request_code):
         # SETUP
         if request_code == self.SETUP and self.state == self.INIT:
             threading.Thread(target=self.receive_rtsp_reply).start()
+            #Tạo luồng phụ nhận rtsp reply
             self.rtsp_sequence_number += 1
             request = (f"SETUP {self.filename} RTSP/1.0\n"
                       f"CSeq: {self.rtsp_sequence_number}\n"
@@ -373,6 +386,7 @@ class Client:
                       f"CSeq: {self.rtsp_sequence_number}\n"
                       f"Session: {self.session_id}")
             self.request_sent = self.PLAY
+            #Khởi tạo cho việc tính tốc độ truyền video
             self.play_start_time = time.time()
             self.total_bytes_received = 0
         
@@ -394,7 +408,7 @@ class Client:
         else:
             return
         
-        self.rtsp_socket.send(request.encode())
+        self.rtsp_socket.send(request.encode()) #Gửi reqeust thông qua socket TCP đã tạo
         print('\nData sent:\n' + request)
         
         # Tính tốc độ video khi Pause hoặc Teardown
@@ -408,40 +422,42 @@ class Client:
     def receive_rtsp_reply(self):
         while True:
             try:
-                reply = self.rtsp_socket.recv(1024)
+                reply = self.rtsp_socket.recv(1024) #Nhận reply từ sever
                 if reply:
-                    self.parse_rtsp_reply(reply.decode("utf-8"))
+                    self.parse_rtsp_reply(reply.decode("utf-8")) #phân tích repky
                 
                 if self.request_sent == self.TEARDOWN:
                     self.rtsp_socket.shutdown(socket.SHUT_RDWR)
                     self.rtsp_socket.close()
+                    #Nếu có reply teardown thì đóng socket TCP
                     break
             except:
                 break
     
     def parse_rtsp_reply(self, data):
         """Phân tích phản hồi RTSP"""
+        #Tách reply thành các dòng
         lines = data.split('\n')
         try:
-            sequence_number = int(lines[1].split(' ')[1])
+            sequence_number = int(lines[1].split(' ')[1]) #lấy sequence number
         except:
             return
         
         if sequence_number == self.rtsp_sequence_number:
             try:
-                session = int(lines[2].split(' ')[1])
+                session = int(lines[2].split(' ')[1]) #lấy session
             except:
                 session = self.session_id
             
-            if self.session_id == 0:
+            if self.session_id == 0: #khởi tạo cho lần đầu
                 self.session_id = session
             
             if self.session_id == session:
-                if int(lines[0].split(' ')[1]) == 200:
+                if int(lines[0].split(' ')[1]) == 200: #check trạng thái rtsp
                     
                     if self.request_sent == self.SETUP:
                         self.state = self.READY
-                        self.open_rtp_port()
+                        self.open_rtp_port() #mở rtp
                         self.play_event.clear()
                         
                         # Khởi động thread nhận RTP
@@ -449,6 +465,7 @@ class Client:
                             self.rtp_thread = threading.Thread(target=self.listen_rtp, daemon=True)
                             self.rtp_thread.start()
                         
+                        #Tự động play cho việc pre buffer
                         print("Auto-starting stream for pre-buffering")
                         self.send_rtsp_request(self.PLAY)
                         self.master.after(100, self.monitor_buffering)
@@ -463,15 +480,16 @@ class Client:
                         self.state = self.INIT
                         self.teardown_acknowledged = 1
     
+
     def open_rtp_port(self):
-        self.rtp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.rtp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) #tạo socket UDP 
         try:
-            self.rtp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
+            self.rtp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576) #tăng kích thước buffer nhận lên 1MB
         except:
             pass
         self.rtp_socket.settimeout(0.5)
         try:
-            self.rtp_socket.bind(('', self.rtp_port))
+            self.rtp_socket.bind(('', self.rtp_port)) #Lắng nghe trên cổng rtp
         except:
             tk_message_box.showwarning('Unable to Bind', 
                                       f'Unable to bind PORT={self.rtp_port}')

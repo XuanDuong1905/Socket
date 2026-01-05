@@ -8,12 +8,13 @@ class VideoStream:
         
         self.frame_number = 0
     
+    #đọc từng frame(đọc được cả file có header, lẫn không có header)
     def nextFrame(self):
         start_position = self.file.tell()
         data = self.file.read(5)  # Đọc 5 bytes đầu (độ dài frame)
         
         if not data:
-            return None 
+            return None #hết video
         
         try:
             frame_length = int(data)
@@ -24,7 +25,7 @@ class VideoStream:
         except ValueError:
             # Fallback: Quét tìm marker kết thúc JPEG (FF D9)
             self.file.seek(start_position)
-            full_data = bytearray()
+            full_data = bytearray() #đọc từng chunk
             
             while True:
                 chunk = self.file.read(1024)
